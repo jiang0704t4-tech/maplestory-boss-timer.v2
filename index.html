@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>楓之谷 Boss 重生計時器</title>
+
+  <!-- PWA 與 Android/iOS 系統主題色彩（將系統頂部狀態列與底部導航欄改為深木色，消除白色底欄） -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#2b1808">
+  <meta name="theme-color" content="#2b1808" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#2b1808" media="(prefers-color-scheme: light)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="./icon.png">
+  <link rel="icon" href="./icon.png">
+
+  <!-- MQTT.js & Canvas Confetti 特效庫 -->
+  <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800&family=Zen+Maru+Gothic:wght@700;900&display=swap');
+
+    :root {
+      --ms-wood-dark: #3e2712;
+      --ms-wood-mid: #68411b;
+      --ms-wood-border: #8d5b28;
+      --ms-parchment: #fff7e6;
+      --ms-parchment-border: #deb887;
+      
+      --btn-idle-bg: linear-gradient(180deg, #fffcf5 0%, #faedd3 100%);
+      --btn-idle-border: #c89d66;
+      --btn-idle-text: #533315;
+      
+      --btn-count-bg: linear-gradient(180deg, #4ade80 0%, #16a34a 100%);
+      --btn-count-border: #14532d;
+
+      --btn-warn-bg: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+      --btn-warn-border: #78350f;
+
+      --btn-spawn-bg: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+      --btn-spawn-border: #7f1d1d;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none; /* iOS 徹底停用長按放大鏡與選單 */
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100dvh;
+      background-color: #2b1808; /* 確保系統透明區塊與虛擬導航列延伸此深咖啡底色 */
+      background: radial-gradient(circle at 50% 20%, #4a2e12 0%, #2b1808 100%);
+      color: #fff;
+      font-family: 'Zen Maru Gothic', 'Fredoka', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      touch-action: manipulation;
+    }
+
+    header {
+      flex-shrink: 0;
+      background: linear-gradient(180deg, #814f24 0%, #523114 100%);
+      border-bottom: 2.5px solid #2b1808;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
+      padding: max(5px, env(safe-area-inset-top, 5px)) 8px 5px 8px; /* 避開 iPhone 動態島/瀏海 */
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 5px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .ms-badge {
+      background: linear-gradient(180deg, #ffedd5 0%, #fed7aa 100%);
+      border: 1.5px solid #9a3412;
+      border-radius: 999px;
+      color: #7c2d12;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      box-shadow: 0 1.5px 0 #9a3412, inset 0 1px 0 #fff;
+      cursor: pointer;
+    }
+    .ms-badge:active { transform: translateY(1px); box-shadow: 0 0.5px 0 #9a3412; }
+    .ms-badge.connected {
+      background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%);
+      border-color: #15803d;
+      color: #14532d;
+      box-shadow: 0 1.5px 0 #15803d;
+    }
+
+    .main-title {
+      font-size: 13px;
+      font-weight: 900;
+      text-shadow: 1px 1px 0 #2a1506, -1px -1px 0 #2a1506, 1px -1px 0 #2a1506, -1px 1px 0 #2a1506, 0 2px 3px rgba(0,0,0,0.6);
+      color: #fef08a;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .maple-leaf-btn {
+      cursor: pointer;
+      display: inline-block;
+      transition: transform 0.15s ease;
+    }
+    .maple-leaf-btn:active {
+      transform: scale(1.3) rotate(15deg);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .timer-pill {
+      display: flex;
+      align-items: center;
+      background: #231206;
+      border: 1.5px solid #a16207;
+      border-radius: 8px;
+      padding: 1px 5px;
+      gap: 2px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .timer-pill input {
+      width: 24px;
+      background: transparent;
+      border: none;
+      color: #fde047;
+      font-family: 'Fredoka', sans-serif;
+      font-weight: 800;
+      font-size: 12px;
+      text-align: center;
+      outline: none;
+    }
+
+    .unit-text { font-size: 10px; font-weight: 800; color: #fcd34d; }
+
+    .btn-wood-danger {
+      background: linear-gradient(180deg, #f87171 0%, #b91c1c 100%);
+      border: 1.5px solid #7f1d1d;
+      border-radius: 7px;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      padding: 3px 6px;
+      box-shadow: 0 1.5px 0 #450a0a;
+      cursor: pointer;
+    }
+    .btn-wood-danger:active { transform: translateY(1px); box-shadow: 0 0.5px 0 #450a0a; }
+
+    .btn-help {
+      background: linear-gradient(180deg, #93c5fd 0%, #2563eb 100%);
+      border: 1.5px solid #1e3a8a;
+      border-radius: 7px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      padding: 3px 6px;
+      box-shadow: 0 1.5px 0 #172554;
+      cursor: pointer;
+    }
+    .btn-help:active { transform: translateY(1px); box-shadow: 0 0.5px 0 #172554; }
+
+    .sub-bar {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 10px;
+      background: rgba(35, 18, 6, 0.7);
+      border-bottom: 1px solid rgba(141, 91, 40, 0.4);
+      font-size: 10.5px;
+      font-weight: 800;
+      color: #fde68a;
+    }
+
+    .btn-kill-stats {
+      background: linear-gradient(180deg, #fef08a 0%, #f59e0b 100%);
+      border: 1.2px solid #78350f;
+      border-radius: 12px;
+      padding: 1px 6px;
+      font-size: 10px;
+      color: #451a03;
+      font-weight: 900;
+      box-shadow: 0 1px 0 #78350f;
+      cursor: pointer;
+    }
+
+    .recent-queue-wrapper {
+      flex-shrink: 0;
+      padding: 4px 6px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 5px;
+      background: linear-gradient(180deg, rgba(46, 26, 10, 0.8) 0%, rgba(30, 16, 5, 0.95) 100%);
+      border-bottom: 2px solid #5a3413;
+    }
+
+    .q-btn {
+      height: clamp(68px, 9.8dvh, 84px);
+      border-radius: 9px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+      box-shadow: 0 2.5px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+      transition: transform 0.08s ease, filter 0.15s;
+    }
+    .q-btn:active { transform: translateY(2px) scale(0.97); box-shadow: 0 0.5px 0 rgba(0,0,0,0.4); }
+    .q-btn.empty {
+      background: rgba(30, 17, 7, 0.4);
+      border: 1.5px dashed rgba(168, 108, 54, 0.3);
+      box-shadow: none;
+      cursor: default;
+    }
+    .q-name {
+      font-size: clamp(16px, 4.4vw, 21px);
+      font-weight: 900;
+      font-family: 'Fredoka', 'Zen Maru Gothic', sans-serif;
+      line-height: 1.1;
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
+      pointer-events: none;
+    }
+    .q-timer {
+      font-size: clamp(12px, 3.2vw, 15px);
+      font-family: 'Fredoka', monospace;
+      font-weight: 800;
+      margin-top: 2px;
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
+      pointer-events: none;
+    }
+
+    .content-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* 6x10 頻道網格 */
+    .grid-container {
+      position: absolute;
+      inset: 0;
+      padding: 3px 5px max(6px, env(safe-area-inset-bottom, 6px)) 5px; /* 避開 iPhone 小白條與留底緩衝 */
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: 3px;
+      height: 100%;
+      min-height: 0;
+      background: rgba(20, 10, 3, 0.3);
+    }
+
+    .ch-btn {
+      background: var(--btn-idle-bg);
+      border: 1.5px solid var(--btn-idle-border);
+      border-radius: 7px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      min-height: 0;
+      box-shadow: 0 1.5px 0 #78471b, inset 0 1px 0 rgba(255,255,255,0.8);
+      transition: transform 0.06s ease;
+    }
+    .ch-btn:active { transform: translateY(1px) scale(0.96); box-shadow: 0 0.5px 0 #78471b; }
+    .ch-name {
+      font-size: clamp(11.5px, 3.1vw, 13.5px);
+      font-weight: 900;
+      font-family: 'Fredoka', sans-serif;
+      color: var(--btn-idle-text);
+      line-height: 1.1;
+      pointer-events: none;
+    }
+    .ch-timer {
+      font-size: clamp(8.5px, 2.2vw, 10.5px);
+      font-family: 'Fredoka', monospace;
+      font-weight: 800;
+      color: #8c5828;
+      pointer-events: none;
+    }
+
+    .counting {
+      background: var(--btn-count-bg) !important;
+      border: 1.5px solid var(--btn-count-border) !important;
+      box-shadow: 0 1.5px 0 #0f3d1e, inset 0 1px 0 rgba(255,255,255,0.5) !important;
+    }
+    .counting .ch-name, .counting .ch-timer,
+    .q-btn.counting .q-name, .q-btn.counting .q-timer {
+      color: #ffffff !important;
+      text-shadow: 1px 1px 0 #0d4a22;
+    }
+
+    .warning {
+      background: var(--btn-warn-bg) !important;
+      border: 1.5px solid var(--btn-warn-border) !important;
+      box-shadow: 0 1.5px 0 #572605, inset 0 1px 0 rgba(255,255,255,0.6) !important;
+      animation: cute-bounce 1.1s infinite alternate ease-in-out;
+    }
+    .warning .ch-name, .warning .ch-timer,
+    .q-btn.warning .q-name, .q-btn.warning .q-timer {
+      color: #fffef0 !important;
+      text-shadow: 1px 1px 0 #78350f;
+    }
+
+    .spawned {
+      background: var(--btn-spawn-bg) !important;
+      border: 1.5px solid var(--btn-spawn-border) !important;
+      box-shadow: 0 2px 0 #4a0d0d, 0 0 10px rgba(239, 68, 68, 0.7), inset 0 1px 0 rgba(255,255,255,0.7) !important;
+      animation: jelly-jump 0.8s infinite alternate ease-in-out;
+    }
+    .spawned .ch-name, .spawned .ch-timer,
+    .q-btn.spawned .q-name, .q-btn.spawned .q-timer {
+      color: #fffbeb !important;
+      text-shadow: 1px 1px 0 #5f0f0f;
+      font-weight: 900;
+    }
+
+    @keyframes cute-bounce {
+      from { filter: brightness(1); transform: scale(1); }
+      to { filter: brightness(1.2); transform: scale(1.02); }
+    }
+    @keyframes jelly-jump {
+      0% { transform: scale(1, 1); filter: brightness(1); }
+      50% { transform: scale(1.04, 0.96); filter: brightness(1.25); }
+      100% { transform: scale(0.98, 1.03); filter: brightness(1.35); }
+    }
+
+    /* 🎮 15x15 五子棋面板 */
+    .gomoku-wrapper {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 6px max(6px, env(safe-area-inset-bottom, 6px)) 6px;
+      background: linear-gradient(180deg, rgba(35, 18, 6, 0.95) 0%, rgba(20, 10, 3, 0.98) 100%);
+      z-index: 10;
+    }
+    .gomoku-wrapper.active {
+      display: flex;
+    }
+
+    .gomoku-hud {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #422610;
+      border: 1.5px solid #8d5b28;
+      border-radius: 8px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 900;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+    .player-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .player-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.2s;
+    }
+    .player-badge.turn-active {
+      background: #78350f;
+      border-color: #fde047;
+      box-shadow: 0 0 8px rgba(253, 224, 71, 0.6);
+      transform: scale(1.05);
+    }
+    .gomoku-board-card {
+      flex: 1;
+      width: 100%;
+      max-width: min(94vw, 54dvh);
+      max-height: min(94vw, 54dvh);
+      aspect-ratio: 1 / 1;
+      margin: auto;
+      background: #e8bd78;
+      border: 3.5px solid #5b3717;
+      border-radius: 10px;
+      box-shadow: inset 0 0 10px rgba(91, 55, 23, 0.5), 0 4px 12px rgba(0,0,0,0.5);
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(15, 1fr);
+      grid-template-rows: repeat(15, 1fr);
+      padding: 4px;
+      touch-action: none;
+    }
+
+    .gomoku-cell {
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .gomoku-cell::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: #94683c;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+    .gomoku-cell::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #94683c;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .gomoku-cell.star-point::before {
+      box-shadow: 0 0 0 2px #5b3717;
+    }
+
+    .stone {
+      width: 88%;
+      height: 88%;
+      border-radius: 50%;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: stone-drop 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes stone-drop {
+      0% { transform: scale(1.5); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .stone.p1 {
+      background: radial-gradient(circle at 35% 35%, #525252, #18181b);
+      border: 1.5px solid #000;
+    }
+    .stone.p2 {
+      background: radial-gradient(circle at 35% 35%, #ffffff, #e4e4e7);
+      border: 1.5px solid #a1a1aa;
+    }
+    .monster-icon {
+      width: 80%;
+      height: 80%;
+      background-image: url('./monsters.jpg');
+      background-size: 500% 1000%;
+      background-repeat: no-repeat;
+      image-rendering: pixelated;
+      pointer-events: none;
+    }
+    .monster-preview {
+      width: 18px;
+      height: 18px;
+      background-image: url('./monsters.jpg');
+      background-size: 500% 1000%;
+      background-repeat: no-repeat;
+      image-rendering: pixelated;
+      display: inline-block;
+    }
+
+    /* 彈窗 UI */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 8, 3, 0.8);
+      backdrop-filter: blur(2px);
+      z-index: 999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .ms-scroll-card {
+      background: linear-gradient(180deg, #fffcf2 0%, #f5e6c8 100%);
+      border: 3.5px solid #5b3717;
+      border-radius: 14px;
+      padding: 14px;
+      width: 100%;
+      max-width: 320px;
+      color: #3f220c;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6), inset 0 0 12px rgba(184, 134, 11, 0.25);
+    }
+
+    .easter-card {
+      background: linear-gradient(180deg, #fff1f2 0%, #ffe4e6 50%, #fecdd3 100%);
+      border: 4px solid #f43f5e;
+      border-radius: 20px;
+      padding: 18px 14px 16px 14px;
+      width: 100%;
+      max-width: 310px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 30px rgba(244, 63, 94, 0.4), inset 0 0 16px rgba(255, 255, 255, 0.8);
+      animation: easter-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes easter-pop {
+      0% { transform: scale(0.4) rotate(-5deg); opacity: 0; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    .heart-badge {
+      font-size: 38px;
+      display: inline-block;
+      animation: heartbeat 0.8s infinite alternate ease-in-out;
+      margin-bottom: 6px;
+    }
+    @keyframes heartbeat {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.22); }
+    }
+    .easter-img-text {
+      width: 100%;
+      max-width: 270px;
+      height: auto;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 2px 4px rgba(244, 63, 94, 0.2));
+    }
+    .easter-img-btn {
+      width: 100%;
+      max-width: 250px;
+      height: auto;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+      filter: drop-shadow(0 3px 0 #881337);
+    }
+    .easter-img-btn:active {
+      transform: translateY(2px) scale(0.98);
+      filter: drop-shadow(0 1px 0 #881337);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-left">
+      <button class="ms-badge" id="roomBtn" onclick="openRoomModal()">🔗 連線</button>
+      <span class="main-title">
+        <span class="maple-leaf-btn" id="mapleLeaf">🍁</span> 楓之谷 Boss
+      </span>
+    </div>
+    <div class="header-right">
+      <div class="timer-pill">
+        <input type="number" id="inputMin" value="45">
+        <span class="unit-text">分</span>
+        <input type="number" id="inputSec" value="0">
+        <span class="unit-text">秒</span>
+      </div>
+      <button class="btn-wood-danger" onclick="resetAll()">重置</button>
+      <button class="btn-help" onclick="openHelpModal()">❓</button>
+    </div>
+  </header>
+
+  <div class="sub-bar">
+    <div style="display:flex; align-items:center; gap:4px;">
+      <span>⏰ 預警:</span>
+      <input type="number" id="inputWarn" style="width:24px; background:rgba(0,0,0,0.2); border:1px solid #a16207; border-radius:4px; color:#fde047; font-size:10.5px; font-weight:800; text-align:center;" value="30">
+      <span>秒</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <button class="btn-kill-stats" onclick="openKillModal()">⚔️ 擊殺 <span id="killTotalBadge">0</span></button>
+      <span id="activeCount" style="color:#bbf7d0;">0 個倒數中</span>
+    </div>
+  </div>
+
+  <div class="recent-queue-wrapper" id="recentQueue">
+    <div class="q-btn empty" id="qslot-0"><span class="q-name">--</span></div>
+    <div class="q-btn empty" id="qslot-1"><span class="q-name">--</span></div>
+    <div class="q-btn empty" id="qslot-2"><span class="q-name">--</span></div>
+    <div class="q-btn empty" id="qslot-3"><span class="q-name">--</span></div>
+    <div class="q-btn empty" id="qslot-4"><span class="q-name">--</span></div>
+  </div>
+
+  <div class="content-area">
+    <div class="grid-container" id="gridContainer"></div>
+
+    <!-- 🎮 五子棋面板 -->
+    <div class="gomoku-wrapper" id="gomokuWrapper">
+      <div class="gomoku-hud">
+        <div class="player-indicator">
+          <div class="player-badge turn-active" id="badgeP1">
+            <span class="monster-preview" id="previewP1"></span>
+            <span>黑方</span>
+          </div>
+          <span style="color:#fde047;">VS</span>
+          <div class="player-badge" id="badgeP2">
+            <span class="monster-preview" id="previewP2"></span>
+            <span>白方</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:4px;">
+          <button onclick="resetGomoku(true)" style="padding:2px 6px; background:#d97706; border:1px solid #78350f; color:#fff; border-radius:5px; font-size:10px; font-weight:900; cursor:pointer;">重抽怪物</button>
+          <button onclick="toggleGomoku(false)" style="padding:2px 6px; background:#dc2626; border:1px solid #7f1d1d; color:#fff; border-radius:5px; font-size:10px; font-weight:900; cursor:pointer;">關閉棋盤</button>
+        </div>
+      </div>
+
+      <div class="gomoku-board-card" id="gomokuBoard"></div>
+    </div>
+  </div>
+
+  <!-- 房間設定/退出彈窗 -->
+  <div class="modal-overlay" id="roomModal" onclick="if(event.target===this)closeRoomModal()">
+    <div class="ms-scroll-card">
+      <h3 style="font-size:15px; font-weight:900; margin-bottom:10px; text-align:center;">📜 組隊連線同步房間</h3>
+      <div id="unconnectedArea">
+        <input type="text" id="roomCodeInput" maxlength="6" placeholder="輸入 6 位房間碼" style="width:100%; padding:8px; background:#fff; border:2px solid #8d5b28; color:#3e2712; border-radius:8px; font-size:18px; font-weight:900; text-align:center; letter-spacing:4px; margin-bottom:10px; font-family:'Fredoka';">
+        <div style="display:flex; gap:6px;">
+          <button onclick="joinRoom(document.getElementById('roomCodeInput').value)" style="flex:1; padding:8px; background:linear-gradient(180deg, #4ade80 0%, #16a34a 100%); border:1.5px solid #14532d; color:#fff; border-radius:8px; font-weight:900; box-shadow:0 1.5px 0 #14532d; cursor:pointer;">進入房間</button>
+          <button onclick="closeRoomModal()" style="padding:8px 12px; background:linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%); border:1.5px solid #64748b; color:#334155; border-radius:8px; font-weight:900; cursor:pointer;">關閉</button>
+        </div>
+      </div>
+      <div id="connectedArea" style="display:none; text-align:center;">
+        <div style="font-size:13px; font-weight:800; color:#15803d; margin-bottom:12px;">
+          目前連線房間：<span id="currentRoomText" style="font-size:18px; font-family:'Fredoka'; font-weight:900;"></span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button onclick="copyRoomLink()" style="padding:8px; background:linear-gradient(180deg, #60a5fa 0%, #2563eb 100%); border:1.5px solid #1e3a8a; color:#fff; border-radius:8px; font-weight:900; box-shadow:0 1.5px 0 #1e3a8a; cursor:pointer;">📋 複製邀請連結給隊友</button>
+          <button onclick="leaveRoom()" style="padding:8px; background:linear-gradient(180deg, #f87171 0%, #dc2626 100%); border:1.5px solid #991b1b; color:#fff; border-radius:8px; font-weight:900; box-shadow:0 1.5px 0 #7f1d1d; cursor:pointer;">🚪 退出組隊房間 (回到單機)</button>
+          <button onclick="closeRoomModal()" style="padding:6px; background:#64748b; border:1px solid #334155; color:#fff; border-radius:8px; font-size:11px; font-weight:900; cursor:pointer;">關閉</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 說明彈窗 -->
+  <div class="modal-overlay" id="helpModal" onclick="if(event.target===this)closeHelpModal()">
+    <div class="ms-scroll-card" style="max-height:85dvh; display:flex; flex-direction:column;">
+      <h3 style="font-size:15px; font-weight:900; margin-bottom:8px; text-align:center;">🍁 使用說明指南</h3>
+      <div style="flex:1; overflow-y:auto; font-size:11.5px; line-height:1.6; color:#4a2e12; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+        <div style="background:#fff; border:1px solid #d4b483; border-radius:6px; padding:6px;">
+          <strong>🎯 基本操作</strong><br>
+          • <strong>單擊任一頻道</strong>：直接開始倒數（擊殺數 +1）。<br>
+          • <strong>王重生後再按一下</strong>：直接重新跑冷卻計時（擊殺數 +1）。<br>
+          • <strong>長按 0.7 秒</strong>：重置該頻道為 Ready 預備狀態（不計擊殺）。
+        </div>
+        <div style="background:#fff; border:1px solid #d4b483; border-radius:6px; padding:6px;">
+          <strong>🔥 頂部重生佇列（前 5 格）</strong><br>
+          • 自動排列最接近重生的前 5 個頻道（左近右遠）。<br>
+          • 點擊可直接重跑計時，長按 0.7 秒可重置回 Ready。
+        </div>
+        <div style="background:#fff; border:1px solid #d4b483; border-radius:6px; padding:6px;">
+          <strong>🎮 隱藏小遊戲：等王五子棋</strong><br>
+          • <strong>快速連點頂部「🍁 楓葉」3 下</strong>，開啟 15×15 怪物五子棋盤！<br>
+          • <strong>關閉棋盤不會清除棋局</strong>，隨時切回打王再開依然保持原樣。<br>
+          • 想開新局可點棋盤右上角「重抽怪物」。
+        </div>
+        <div style="background:#fff; border:1px solid #d4b483; border-radius:6px; padding:6px;">
+          <strong>👥 組隊連線機制</strong><br>
+          • 點擊左上角「連線」輸入 6 位數房間碼。<br>
+          • <strong>新加入組隊者會自動跟隨房間既有進度</strong>，絕不蓋台！
+        </div>
+      </div>
+      <button onclick="closeHelpModal()" style="margin-top:10px; padding:7px; background:#5b3717; border:none; color:#fde047; border-radius:8px; font-size:12px; font-weight:900; cursor:pointer;">我知道了！</button>
+    </div>
+  </div>
+
+  <!-- 擊殺統計彈窗 -->
+  <div class="modal-overlay" id="killModal" onclick="if(event.target===this)closeKillModal()">
+    <div class="ms-scroll-card" style="max-height:80dvh; display:flex; flex-direction:column;">
+      <h3 style="font-size:15px; font-weight:900; margin-bottom:6px; text-align:center;">🏆 累積擊殺統計</h3>
+      <div style="text-align:center; font-size:12px; font-weight:800; margin-bottom:8px; color:#9a3412;">
+        總擊殺數：<span id="killTotalModal" style="font-size:18px; font-family:'Fredoka'; color:#b91c1c;">0</span> 隻
+      </div>
+      <div id="killGrid" style="flex:1; overflow-y:auto; display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; padding:4px; background:#fffcf5; border:1px solid #d4b483; border-radius:6px; margin-bottom:10px;"></div>
+      <div style="display:flex; gap:6px;">
+        <button onclick="resetKills()" style="padding:6px 10px; background:#f87171; border:1.5px solid #991b1b; color:#fff; border-radius:6px; font-size:11px; font-weight:900; cursor:pointer;">清空擊殺</button>
+        <button onclick="closeKillModal()" style="flex:1; padding:6px; background:#64748b; border:1.5px solid #334155; color:#fff; border-radius:6px; font-size:11px; font-weight:900; cursor:pointer;">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+
+    const TOTAL_CH = 60;
+    let targets = JSON.parse(localStorage.getItem('ms_targets') || 'null') || Array(TOTAL_CH + 1).fill(0);
+    let kills = JSON.parse(localStorage.getItem('ms_kills') || 'null') || Array(TOTAL_CH + 1).fill(0);
+    let currentRoom = localStorage.getItem('ms_room') || '';
+    let mqttClient = null;
+
+    let globalActionLockUntil = 0;
+
+    const inputMin = document.getElementById('inputMin');
+    const inputSec = document.getElementById('inputSec');
+    const inputWarn = document.getElementById('inputWarn');
+    const container = document.getElementById('gridContainer');
+
+    function getDurationSec() {
+      return ((parseInt(inputMin.value) || 0) * 60) + (parseInt(inputSec.value) || 0);
+    }
+    function getWarnSec() {
+      return parseInt(inputWarn.value) || 30;
+    }
+
+    function saveLocal() {
+      localStorage.setItem('ms_targets', JSON.stringify(targets));
+      localStorage.setItem('ms_kills', JSON.stringify(kills));
+    }
+
+    // 觸發第 471 隻彩蛋
+    function triggerEasterEgg() {
+      if (document.getElementById('easterEggOverlay')) return;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'easterEggOverlay';
+      overlay.className = 'modal-overlay';
+      overlay.style.display = 'flex';
+      overlay.style.zIndex = '10000';
+
+      const card = document.createElement('div');
+      card.className = 'easter-card';
+
+      const icon = document.createElement('div');
+      icon.className = 'heart-badge';
+      icon.textContent = '💖';
+
+      const imgText = document.createElement('img');
+      imgText.className = 'easter-img-text';
+      imgText.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 110'%3E%3Cstyle%3E.t1%7Bfont-family:'Zen Maru Gothic',sans-serif;font-weight:900;font-size:22px;fill:%23e11d48;letter-spacing:0.8px;text-anchor:middle;%7D.t2%7Bfont-family:'Zen Maru Gothic',sans-serif;font-weight:800;font-size:11.5px;fill:%239f1239;letter-spacing:0.5px;text-anchor:middle;%7D%3C/style%3E%3Ctext x='160' y='32' class='t1'%3E...%E5%88%A5%E9%82%A3%E9%BA%BC%E7%B4%AF%EF%BC%8C%3C/text%3E%3Ctext x='160' y='64' class='t1'%3E%E8%A6%81%E5%A4%9A%E4%BC%91%E6%81%AF%E5%95%A6%EF%BC%8C%E6%84%9B%E5%A6%B3%3C/text%3E%3Ctext x='160' y='98' class='t2'%3E%E2%9C%A8 %E6%81%AD%E5%96%9C%E8%A7%A3%E9%8E%96%E7%AC%AC 471 %E9%9A%BB%E9%99%90%E5%AE%9A%E6%9A%96%E5%BF%83%E5%BD%A9%E8%9B%8B %E2%9C%A8%3C/text%3E%3C/svg%3E";
+
+      const imgBtn = document.createElement('img');
+      imgBtn.className = 'easter-img-btn';
+      imgBtn.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 50'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fb7185'/%3E%3Cstop offset='100%25' stop-color='%23e11d48'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='240' height='50' rx='12' fill='url(%23bg)' stroke='%239f1239' stroke-width='2'/%3E%3Ctext x='120' y='32' font-family='sans-serif' font-weight='900' font-size='15' fill='%23ffffff' text-anchor='middle'%3E%E6%9C%83%E4%B9%96%E4%B9%96%E4%BC%91%E6%81%AF%E7%9A%84 %E2%9D%A4%EF%B8%8F%3C/text%3E%3C/svg%3E";
+      imgBtn.onclick = () => overlay.remove();
+
+      card.appendChild(icon);
+      card.appendChild(imgText);
+      card.appendChild(imgBtn);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      if (typeof confetti === 'function') {
+        const duration = 3000;
+        const animationEnd = Date.now() + duration;
+        const interval = setInterval(() => {
+          const timeLeft = animationEnd - Date.now();
+          if (timeLeft <= 0) return clearInterval(interval);
+          confetti({
+            particleCount: 25,
+            spread: 360,
+            origin: { x: Math.random(), y: Math.random() * 0.6 },
+            colors: ['#ff4d6d', '#ff758f', '#ff8fa3', '#fff0f3', '#ffd166']
+          });
+        }, 250);
+      }
+    }
+
+    function updateKillBadges(prevTotal = null) {
+      const sum = kills.reduce((a, b) => a + b, 0);
+      document.getElementById('killTotalBadge').textContent = sum;
+      document.getElementById('killTotalModal').textContent = sum;
+
+      if ((prevTotal !== null && prevTotal < 471 && sum >= 471) || sum === 471) {
+        triggerEasterEgg();
+      }
+    }
+
+    function handleChannelClick(ch) {
+      const now = Date.now();
+      if (now < globalActionLockUntil) return;
+      globalActionLockUntil = now + 350;
+
+      const prevTotal = kills.reduce((a, b) => a + b, 0);
+      targets[ch] = now + getDurationSec() * 1000;
+      kills[ch] = (kills[ch] || 0) + 1;
+      saveLocal();
+      updateKillBadges(prevTotal);
+      syncBroadcast(ch, targets[ch], true);
+      render();
+    }
+
+    function resetChannel(ch) {
+      const now = Date.now();
+      if (now < globalActionLockUntil) return;
+      globalActionLockUntil = now + 350;
+
+      targets[ch] = 0;
+      saveLocal();
+      syncBroadcast(ch, 0, false);
+      render();
+    }
+
+    for (let ch = 1; ch <= TOTAL_CH; ch++) {
+      const btn = document.createElement('div');
+      btn.className = 'ch-btn';
+      btn.id = `btn-${ch}`;
+      btn.innerHTML = `<span class="ch-name">CH ${ch}</span><span class="ch-timer" id="txt-${ch}">Ready</span>`;
+
+      let pressTimer = null;
+      let isLong = false;
+      let lastTouchTime = 0;
+
+      const start = (e) => {
+        isLong = false;
+        pressTimer = setTimeout(() => {
+          isLong = true;
+          resetChannel(ch);
+        }, 700);
+      };
+
+      const end = (e) => {
+        clearTimeout(pressTimer);
+        if (e.type === 'mouseup' && Date.now() - lastTouchTime < 500) return;
+        if (e.type === 'touchend') lastTouchTime = Date.now();
+
+        if (!isLong) handleChannelClick(ch);
+      };
+
+      btn.addEventListener('touchstart', start, { passive: true });
+      btn.addEventListener('touchend', end);
+      btn.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+      btn.addEventListener('mousedown', start);
+      btn.addEventListener('mouseup', end);
+      btn.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+      container.appendChild(btn);
+    }
+
+    const topSlots = [];
+    for (let i = 0; i < 5; i++) {
+      const slot = document.getElementById(`qslot-${i}`);
+      topSlots.push(slot);
+
+      let qTimer = null;
+      let qLong = false;
+      let qLastTouch = 0;
+
+      const qStart = (e) => {
+        const boundCh = slot.dataset.ch ? parseInt(slot.dataset.ch) : null;
+        if (!boundCh) return;
+
+        qLong = false;
+        qTimer = setTimeout(() => {
+          qLong = true;
+          resetChannel(boundCh);
+        }, 700);
+      };
+
+      const qEnd = (e) => {
+        clearTimeout(qTimer);
+        if (e.type === 'mouseup' && Date.now() - qLastTouch < 500) return;
+        if (e.type === 'touchend') qLastTouch = Date.now();
+
+        const boundCh = slot.dataset.ch ? parseInt(slot.dataset.ch) : null;
+        if (boundCh && !qLong) {
+          handleChannelClick(boundCh);
+        }
+      };
+
+      slot.addEventListener('touchstart', qStart, { passive: true });
+      slot.addEventListener('touchend', qEnd);
+      slot.addEventListener('touchcancel', () => clearTimeout(qTimer));
+      slot.addEventListener('mousedown', qStart);
+      slot.addEventListener('mouseup', qEnd);
+      slot.addEventListener('mouseleave', () => clearTimeout(qTimer));
+    }
+
+    function resetAll() {
+      if (confirm('重置所有頻道的倒數時間？')) {
+        targets = Array(TOTAL_CH + 1).fill(0);
+        saveLocal();
+        syncBroadcastAll();
+        render();
+      }
+    }
+
+    function resetKills() {
+      if (confirm('確定清空所有擊殺數統計？')) {
+        kills = Array(TOTAL_CH + 1).fill(0);
+        saveLocal();
+        updateKillBadges();
+        renderKillGrid();
+      }
+    }
+
+    function formatTime(s) {
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+
+    function render() {
+      const now = Date.now();
+      const warnSec = getWarnSec();
+      let activeList = [];
+
+      for (let ch = 1; ch <= TOTAL_CH; ch++) {
+        const btn = document.getElementById(`btn-${ch}`);
+        const txt = document.getElementById(`txt-${ch}`);
+        const target = targets[ch];
+
+        if (target === 0) {
+          btn.className = 'ch-btn';
+          txt.textContent = 'Ready';
+        } else if (now >= target) {
+          btn.className = 'ch-btn spawned';
+          txt.textContent = '已重生';
+          activeList.push({ ch, remain: 0, state: 'spawned' });
+        } else {
+          const remain = Math.ceil((target - now) / 1000);
+          if (remain <= warnSec) {
+            btn.className = 'ch-btn warning';
+            activeList.push({ ch, remain, state: 'warning' });
+          } else {
+            btn.className = 'ch-btn counting';
+            activeList.push({ ch, remain, state: 'counting' });
+          }
+          txt.textContent = formatTime(remain);
+        }
+      }
+
+      document.getElementById('activeCount').textContent = `${activeList.length} 個倒數中`;
+
+      activeList.sort((a, b) => a.remain - b.remain);
+      const top5 = activeList.slice(0, 5);
+
+      for (let i = 0; i < 5; i++) {
+        const slot = topSlots[i];
+        const item = top5[i];
+
+        if (item) {
+          slot.dataset.ch = item.ch;
+          slot.className = `q-btn ${item.state}`;
+          slot.innerHTML = `
+            <span class="q-name">CH ${item.ch}</span>
+            <span class="q-timer">${item.state === 'spawned' ? '已重生' : formatTime(item.remain)}</span>
+          `;
+        } else {
+          slot.dataset.ch = '';
+          slot.className = 'q-btn empty';
+          slot.innerHTML = `<span style="font-size:11px; color:#8d5b28; pointer-events:none;">--</span>`;
+        }
+      }
+    }
+
+    // ==========================================
+    // 🎮 楓之谷怪物 15x15 五子棋小遊戲邏輯（支援常駐保留）
+    // ==========================================
+    const BOARD_SIZE = 15;
+    let board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+    let currentTurn = 1; // 1: P1(黑方), 2: P2(白方)
+    let isGameOver = false;
+    let isGomokuInitialized = false;
+
+    const totalMonsters = 47;
+    let p1MonsterIndex = 2; // 預設 菇菇寶貝
+    let p2MonsterIndex = 3; // 預設 綠水靈
+
+    function getMonsterBgPos(index) {
+      const col = index % 5;
+      const row = Math.floor(index / 5);
+      const xPercent = (col / 4) * 100;
+      const yPercent = (row / 9) * 100;
+      return `${xPercent}% ${yPercent}%`;
+    }
+
+    function randomizeMonsters() {
+      p1MonsterIndex = Math.floor(Math.random() * totalMonsters);
+      do {
+        p2MonsterIndex = Math.floor(Math.random() * totalMonsters);
+      } while (p2MonsterIndex === p1MonsterIndex);
+
+      document.getElementById('previewP1').style.backgroundPosition = getMonsterBgPos(p1MonsterIndex);
+      document.getElementById('previewP2').style.backgroundPosition = getMonsterBgPos(p2MonsterIndex);
+    }
+
+    const gomokuBoard = document.getElementById('gomokuBoard');
+
+    function initGomokuBoardDOM() {
+      if (isGomokuInitialized) return;
+      gomokuBoard.innerHTML = '';
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'gomoku-cell';
+          cell.id = `gcell-${r}-${c}`;
+          if ((r === 3 || r === 7 || r === 11) && (c === 3 || c === 7 || c === 11)) {
+            cell.classList.add('star-point');
+          }
+          cell.onclick = () => handleCellClick(r, c, cell);
+          gomokuBoard.appendChild(cell);
+        }
+      }
+      isGomokuInitialized = true;
+    }
+
+    function handleCellClick(r, c, cell) {
+      if (isGameOver || board[r][c] !== 0) return;
+
+      board[r][c] = currentTurn;
+
+      const stone = document.createElement('div');
+      stone.className = `stone ${currentTurn === 1 ? 'p1' : 'p2'}`;
+
+      const icon = document.createElement('div');
+      icon.className = 'monster-icon';
+      icon.style.backgroundPosition = getMonsterBgPos(currentTurn === 1 ? p1MonsterIndex : p2MonsterIndex);
+      stone.appendChild(icon);
+      cell.appendChild(stone);
+
+      if (checkWin(r, c, currentTurn)) {
+        isGameOver = true;
+        const winner = currentTurn === 1 ? '黑方怪物' : '白方怪物';
+        setTimeout(() => {
+          alert(`🎉 恭喜！【${winner}】達成五連珠獲勝！`);
+          confetti({ particleCount: 50, spread: 360 });
+        }, 100);
+        return;
+      }
+
+      currentTurn = currentTurn === 1 ? 2 : 1;
+      document.getElementById('badgeP1').classList.toggle('turn-active', currentTurn === 1);
+      document.getElementById('badgeP2').classList.toggle('turn-active', currentTurn === 2);
+    }
+
+    function checkWin(r, c, player) {
+      const dirs = [
+        [[0, 1], [0, -1]],
+        [[1, 0], [-1, 0]],
+        [[1, 1], [-1, -1]],
+        [[1, -1], [-1, 1]]
+      ];
+
+      for (let dir of dirs) {
+        let count = 1;
+        for (let [dr, dc] of dir) {
+          let nr = r + dr, nc = c + dc;
+          while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+            count++;
+            nr += dr;
+            nc += dc;
+          }
+        }
+        if (count >= 5) return true;
+      }
+      return false;
+    }
+
+    function resetGomoku(reRoll = false) {
+      board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+      currentTurn = 1;
+      isGameOver = false;
+      document.getElementById('badgeP1').classList.add('turn-active');
+      document.getElementById('badgeP2').classList.remove('turn-active');
+      if (reRoll) randomizeMonsters();
+      
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const cell = document.getElementById(`gcell-${r}-${c}`);
+          if (cell) {
+            const stone = cell.querySelector('.stone');
+            if (stone) stone.remove();
+          }
+        }
+      }
+    }
+
+    function toggleGomoku(show) {
+      const wrapper = document.getElementById('gomokuWrapper');
+      initGomokuBoardDOM();
+
+      if (show) {
+        if (p1MonsterIndex === 2 && p2MonsterIndex === 3 && board.every(row => row.every(val => val === 0))) {
+          randomizeMonsters();
+        }
+        wrapper.classList.add('active');
+      } else {
+        wrapper.classList.remove('active');
+      }
+    }
+
+    let mapleClickCount = 0;
+    let mapleTimer = null;
+    document.getElementById('mapleLeaf').addEventListener('click', () => {
+      mapleClickCount++;
+      clearTimeout(mapleTimer);
+      mapleTimer = setTimeout(() => { mapleClickCount = 0; }, 1200);
+
+      if (mapleClickCount >= 3) {
+        mapleClickCount = 0;
+        const wrapper = document.getElementById('gomokuWrapper');
+        const isActive = wrapper.classList.contains('active');
+        toggleGomoku(!isActive);
+      }
+    });
+
+    // MQTT 組隊同步邏輯
+    function syncBroadcast(ch, target, isKill) {
+      if (!mqttClient || !currentRoom) return;
+      mqttClient.publish(`maple/room/${currentRoom}`, JSON.stringify({
+        type: 'single', ch, target, isKill, kills: kills[ch]
+      }));
+    }
+
+    function syncBroadcastAll() {
+      if (!mqttClient || !currentRoom) return;
+      mqttClient.publish(`maple/room/${currentRoom}`, JSON.stringify({
+        type: 'full_sync_response', targets, kills
+      }));
+    }
+
+    function initMQTT(room) {
+      if (mqttClient) mqttClient.end();
+      currentRoom = room;
+      localStorage.setItem('ms_room', room);
+      updateRoomUI(true, room);
+
+      mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+      mqttClient.on('connect', () => {
+        mqttClient.subscribe(`maple/room/${room}`);
+        mqttClient.publish(`maple/room/${room}`, JSON.stringify({ type: 'request_sync' }));
+      });
+
+      mqttClient.on('message', (t, p) => {
+        try {
+          const d = JSON.parse(p.toString());
+          const prevTotal = kills.reduce((a, b) => a + b, 0);
+
+          if (d.type === 'request_sync') {
+            const hasActive = targets.some(t => t > 0);
+            if (hasActive) {
+              mqttClient.publish(`maple/room/${currentRoom}`, JSON.stringify({
+                type: 'full_sync_response', targets, kills
+              }));
+            }
+          } else if (d.type === 'full_sync_response') {
+            targets = d.targets;
+            if (d.kills) kills = d.kills;
+            saveLocal();
+            updateKillBadges(prevTotal);
+            render();
+          } else if (d.type === 'single') {
+            targets[d.ch] = d.target;
+            if (d.kills !== undefined) kills[d.ch] = d.kills;
+            saveLocal();
+            updateKillBadges(prevTotal);
+            render();
+          }
+        } catch(e) {}
+      });
+    }
+
+    function updateRoomUI(isConnected, room = '') {
+      const roomBtn = document.getElementById('roomBtn');
+      const unconnectedArea = document.getElementById('unconnectedArea');
+      const connectedArea = document.getElementById('connectedArea');
+      const currentRoomText = document.getElementById('currentRoomText');
+
+      if (isConnected) {
+        roomBtn.className = 'ms-badge connected';
+        roomBtn.textContent = `🟢 ${room}`;
+        unconnectedArea.style.display = 'none';
+        connectedArea.style.display = 'block';
+        currentRoomText.textContent = room;
+      } else {
+        roomBtn.className = 'ms-badge';
+        roomBtn.textContent = '🔗 連線';
+        unconnectedArea.style.display = 'block';
+        connectedArea.style.display = 'none';
+      }
+    }
+
+    function openRoomModal() {
+      updateRoomUI(!!currentRoom, currentRoom);
+      document.getElementById('roomModal').style.display = 'flex';
+    }
+    function closeRoomModal() { document.getElementById('roomModal').style.display = 'none'; }
+
+    function joinRoom(val) {
+      if (val && val.trim().length === 6) {
+        initMQTT(val.trim());
+        closeRoomModal();
+      } else {
+        alert('請輸入 6 位數字或英文房間碼');
+      }
+    }
+
+    function leaveRoom() {
+      if (confirm('確定退出目前組隊房間？退出後將回到本機單機模式。')) {
+        if (mqttClient) mqttClient.end();
+        mqttClient = null;
+        currentRoom = '';
+        localStorage.removeItem('ms_room');
+        updateRoomUI(false);
+        closeRoomModal();
+      }
+    }
+
+    function copyRoomLink() {
+      const url = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => alert('✅ 房間邀請連結已複製！貼給隊友點開即可直接進房。'));
+      } else {
+        alert(`請將此連結複製給隊友：\n${url}`);
+      }
+    }
+
+    function openHelpModal() { document.getElementById('helpModal').style.display = 'flex'; }
+    function closeHelpModal() { document.getElementById('helpModal').style.display = 'none'; }
+
+    function openKillModal() {
+      renderKillGrid();
+      document.getElementById('killModal').style.display = 'flex';
+    }
+    function closeKillModal() { document.getElementById('killModal').style.display = 'none'; }
+    function renderKillGrid() {
+      const g = document.getElementById('killGrid');
+      g.innerHTML = '';
+      for (let ch = 1; ch <= TOTAL_CH; ch++) {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:3px; background:#fff; border:1px solid #e2d2b8; border-radius:4px; text-align:center; font-size:10px; font-weight:800; color:#5c3a21;';
+        item.innerHTML = `<div>CH ${ch}</div><div style="color:#dc2626; font-family:'Fredoka'; font-size:11px;">${kills[ch] || 0}</div>`;
+        g.appendChild(item);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        render();
+        if (currentRoom && mqttClient && mqttClient.connected) {
+          mqttClient.publish(`maple/room/${currentRoom}`, JSON.stringify({ type: 'request_sync' }));
+        }
+      }
+    });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramRoom = urlParams.get('room');
+    if (paramRoom && paramRoom.length === 6) {
+      initMQTT(paramRoom);
+    } else if (currentRoom) {
+      initMQTT(currentRoom);
+    }
+
+    updateKillBadges();
+    setInterval(render, 1000);
+    render();
+  </script>
+</body>
+</html>

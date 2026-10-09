@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>楓之谷 Boss 重生計時器</title>
 
-  <!-- PWA 與 Android/iOS 系統主題色彩（將系統頂部狀態列與底部導航欄改為深木色，消除白色底欄） -->
+  <!-- PWA 與色彩設定 -->
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2b1808">
   <meta name="theme-color" content="#2b1808" media="(prefers-color-scheme: dark)">
@@ -16,7 +16,7 @@
   <link rel="apple-touch-icon" href="./icon.png">
   <link rel="icon" href="./icon.png">
 
-  <!-- MQTT.js & Canvas Confetti 特效庫 -->
+  <!-- MQTT.js & Canvas Confetti -->
   <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
@@ -50,14 +50,14 @@
       padding: 0;
       user-select: none;
       -webkit-user-select: none;
-      -webkit-touch-callout: none; /* iOS 徹底停用長按放大鏡與選單 */
+      -webkit-touch-callout: none;
       -webkit-tap-highlight-color: transparent;
     }
 
     html, body {
       width: 100%;
       height: 100dvh;
-      background-color: #2b1808; /* 確保系統透明區塊與虛擬導航列延伸此深咖啡底色 */
+      background-color: #2b1808;
       background: radial-gradient(circle at 50% 20%, #4a2e12 0%, #2b1808 100%);
       color: #fff;
       font-family: 'Zen Maru Gothic', 'Fredoka', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -72,7 +72,7 @@
       background: linear-gradient(180deg, #814f24 0%, #523114 100%);
       border-bottom: 2.5px solid #2b1808;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
-      padding: max(5px, env(safe-area-inset-top, 5px)) 8px 5px 8px; /* 避開 iPhone 動態島/瀏海 */
+      padding: max(5px, env(safe-area-inset-top, 5px)) 8px 5px 8px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -264,11 +264,11 @@
       min-height: 0;
     }
 
-    /* 6x10 頻道網格 */
+    /* 6x10 網格 */
     .grid-container {
       position: absolute;
       inset: 0;
-      padding: 3px 5px max(6px, env(safe-area-inset-bottom, 6px)) 5px; /* 避開 iPhone 小白條與留底緩衝 */
+      padding: 3px 5px max(6px, env(safe-area-inset-bottom, 6px)) 5px;
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       grid-template-rows: repeat(10, 1fr);
@@ -391,8 +391,8 @@
     .player-badge {
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 2px 6px;
+      gap: 5px;
+      padding: 2px 7px;
       border-radius: 6px;
       background: rgba(0,0,0,0.3);
       border: 1px solid rgba(255,255,255,0.1);
@@ -411,7 +411,7 @@
       max-height: min(94vw, 54dvh);
       aspect-ratio: 1 / 1;
       margin: auto;
-      background: #e8bd78;
+      background: #e5b36a;
       border: 3.5px solid #5b3717;
       border-radius: 10px;
       box-shadow: inset 0 0 10px rgba(91, 55, 23, 0.5), 0 4px 12px rgba(0,0,0,0.5);
@@ -437,7 +437,7 @@
       left: 0;
       right: 0;
       height: 1px;
-      background: #94683c;
+      background: #8b5a2b;
       transform: translateY(-50%);
       pointer-events: none;
     }
@@ -448,7 +448,7 @@
       top: 0;
       bottom: 0;
       width: 1px;
-      background: #94683c;
+      background: #8b5a2b;
       transform: translateX(-50%);
       pointer-events: none;
     }
@@ -456,47 +456,52 @@
       box-shadow: 0 0 0 2px #5b3717;
     }
 
+    /* 🍁 精準楓之谷怪物棋子樣式 */
     .stone {
-      width: 88%;
-      height: 88%;
+      width: 92%;
+      height: 92%;
       border-radius: 50%;
       position: relative;
       z-index: 2;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
       display: flex;
       align-items: center;
       justify-content: center;
       animation: stone-drop 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     @keyframes stone-drop {
-      0% { transform: scale(1.5); opacity: 0; }
+      0% { transform: scale(1.4); opacity: 0; }
       100% { transform: scale(1); opacity: 1; }
     }
+    /* 黑方棋子：深巧克力木質浮雕 */
     .stone.p1 {
-      background: radial-gradient(circle at 35% 35%, #525252, #18181b);
-      border: 1.5px solid #000;
+      background: radial-gradient(circle at 35% 35%, #4a2c11 0%, #1c0e04 100%);
+      border: 1.5px solid #6b3e15;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.3);
     }
+    /* 白方棋子：米白象牙木質浮雕 */
     .stone.p2 {
-      background: radial-gradient(circle at 35% 35%, #ffffff, #e4e4e7);
-      border: 1.5px solid #a1a1aa;
+      background: radial-gradient(circle at 35% 35%, #fffdfa 0%, #ecdcc3 100%);
+      border: 1.5px solid #b8976b;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 1px #fff;
     }
+
+    /* 精準裁切的怪物圖像容器 */
     .monster-icon {
-      width: 80%;
-      height: 80%;
+      width: 78%;
+      height: 78%;
       background-image: url('./monsters.jpg');
-      background-size: 500% 1000%;
       background-repeat: no-repeat;
       image-rendering: pixelated;
       pointer-events: none;
     }
     .monster-preview {
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       background-image: url('./monsters.jpg');
-      background-size: 500% 1000%;
       background-repeat: no-repeat;
       image-rendering: pixelated;
       display: inline-block;
+      border-radius: 4px;
     }
 
     /* 彈窗 UI */
@@ -639,7 +644,7 @@
     </div>
   </div>
 
-  <!-- 房間設定/退出彈窗 -->
+  <!-- 房間彈窗 -->
   <div class="modal-overlay" id="roomModal" onclick="if(event.target===this)closeRoomModal()">
     <div class="ms-scroll-card">
       <h3 style="font-size:15px; font-weight:900; margin-bottom:10px; text-align:center;">📜 組隊連線同步房間</h3>
@@ -742,7 +747,6 @@
       localStorage.setItem('ms_kills', JSON.stringify(kills));
     }
 
-    // 觸發第 471 隻彩蛋
     function triggerEasterEgg() {
       if (document.getElementById('easterEggOverlay')) return;
 
@@ -978,24 +982,49 @@
     }
 
     // ==========================================
-    // 🎮 楓之谷怪物 15x15 五子棋小遊戲邏輯（支援常駐保留）
+    // 🎮 精準裁切怪物座標五子棋邏輯
     // ==========================================
     const BOARD_SIZE = 15;
     let board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
-    let currentTurn = 1; // 1: P1(黑方), 2: P2(白方)
+    let currentTurn = 1;
     let isGameOver = false;
     let isGomokuInitialized = false;
 
+    // 47 隻怪物的精確 (col, row)
     const totalMonsters = 47;
     let p1MonsterIndex = 2; // 預設 菇菇寶貝
     let p2MonsterIndex = 3; // 預設 綠水靈
 
-    function getMonsterBgPos(index) {
+    /*
+      原圖幾何精確測量：
+      - 圖片尺寸基準：380 x 640
+      - 怪物區域起點：X 從 44px 開始，Y 從 90px 開始
+      - 欄寬度步伐：約 60px
+      - 列高度步伐：約 53.5px
+    */
+    function applyMonsterStyle(el, index, isSmall = false) {
       const col = index % 5;
       const row = Math.floor(index / 5);
-      const xPercent = (col / 4) * 100;
-      const yPercent = (row / 9) * 100;
-      return `${xPercent}% ${yPercent}%`;
+
+      if (isSmall) {
+        // 預覽小圖 20x20
+        const scale = 20 / 38;
+        const bgW = 380 * scale;
+        const bgH = 640 * scale;
+        const posX = -(46 + col * 60) * scale;
+        const posY = -(92 + row * 53.5) * scale;
+        el.style.backgroundSize = `${bgW}px ${bgH}px`;
+        el.style.backgroundPosition = `${posX}px ${posY}px`;
+      } else {
+        // 棋子大圖 28x28
+        const scale = 28 / 38;
+        const bgW = 380 * scale;
+        const bgH = 640 * scale;
+        const posX = -(46 + col * 60) * scale;
+        const posY = -(92 + row * 53.5) * scale;
+        el.style.backgroundSize = `${bgW}px ${bgH}px`;
+        el.style.backgroundPosition = `${posX}px ${posY}px`;
+      }
     }
 
     function randomizeMonsters() {
@@ -1004,8 +1033,8 @@
         p2MonsterIndex = Math.floor(Math.random() * totalMonsters);
       } while (p2MonsterIndex === p1MonsterIndex);
 
-      document.getElementById('previewP1').style.backgroundPosition = getMonsterBgPos(p1MonsterIndex);
-      document.getElementById('previewP2').style.backgroundPosition = getMonsterBgPos(p2MonsterIndex);
+      applyMonsterStyle(document.getElementById('previewP1'), p1MonsterIndex, true);
+      applyMonsterStyle(document.getElementById('previewP2'), p2MonsterIndex, true);
     }
 
     const gomokuBoard = document.getElementById('gomokuBoard');
@@ -1038,7 +1067,7 @@
 
       const icon = document.createElement('div');
       icon.className = 'monster-icon';
-      icon.style.backgroundPosition = getMonsterBgPos(currentTurn === 1 ? p1MonsterIndex : p2MonsterIndex);
+      applyMonsterStyle(icon, currentTurn === 1 ? p1MonsterIndex : p2MonsterIndex, false);
       stone.appendChild(icon);
       cell.appendChild(stone);
 
@@ -1128,7 +1157,7 @@
       }
     });
 
-    // MQTT 組隊同步邏輯
+    // MQTT 同步
     function syncBroadcast(ch, target, isKill) {
       if (!mqttClient || !currentRoom) return;
       mqttClient.publish(`maple/room/${currentRoom}`, JSON.stringify({
